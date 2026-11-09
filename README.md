@@ -32,6 +32,10 @@ CSB is a tree-shaped console in your terminal. Resources live in the cluster; na
 
 **Understanding CSB**　[Reading the tree](#reading-the-tree-nodes-and-markers) · [Naming and lineage](#naming-and-lineage) · [Sandbox lifecycle](#sandbox-lifecycle) · [Three kinds of snapshots](#three-kinds-of-snapshots-are-not-the-same-thing) · [Local ledger and sharing](#local-ledger-and-sharing)
 
+**Look things up** [Keys and actions](#keys-and-actions-at-a-glance) · [Egress (proxy)](#egress-proxy) · [Command-line reference](#command-line-reference) · [Exit codes and flags](#exit-codes-global-flags-and-signals) · [Environment variables](#appendix-environment-variables) · [Where settings live](#where-settings-live) · [Node types](#appendix-node-types-at-a-glance)
+
+**When something breaks**　[Troubleshooting](#troubleshooting) · [License and credits](#license-credits-and-contributing)
+
 ## What it is and what it does
 
 ```text
