@@ -179,7 +179,7 @@ def _src():
         m0 = re.search(r"^LOGO = r'''(.*?)'''", t, re.S | re.M)
         art = m0.group(1).split('\n') if m0 else ['CSB']
     m = re.search(r"^__version__\s*=\s*['\"]([^'\"]+)['\"]", t, re.M)
-    return art, 'csb v' + (m.group(1) if m else '0.1.0')
+    return art, 'csb v' + (m.group(1) if m else '0.1.1')
 
 ART, VER = _src()
 LW = max(len(x) for x in ART)

@@ -2,13 +2,13 @@
 
 English · [简体中文](README.zh.md)
 
-> CubeSandbox's CLI and WebUI list resources by id only, so you have to piece the relationships together yourself; **CSB-TUI fills that in as a tree** — names, families, sequence numbers and lineage live on your machine.
+> CubeSandbox's CLI and WebUI locate resources mostly by id, so you have to piece the relationships together on your own; **CSB-TUI fills that in as a tree** — names, families, sequence numbers and lineage live on your machine.
 
 > [!WARNING]
 > **This is an experimental build and may still have bugs.**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Buxton1984/csbtui/v0.1.0/csb-demo.gif" width="900" alt="CSB-TUI tree TUI — cycling through five skins">
+  <img src="https://raw.githubusercontent.com/Buxton1984/CubeSandbox-TUI/HEAD/csb-demo.gif" width="900" alt="CSB-TUI tree TUI — cycling through five skins">
 </p>
 
 <p align="center">
@@ -52,9 +52,9 @@ CSB is a tree-shaped console in your terminal. Resources live in the cluster; na
 ```
 
 - **A tree drawn from lineage**: templates, sandboxes, snapshots, signposts and unregistered resources share one tree; the key bar on the left changes with the cursor.
-- **One source for UI and CLI**: the same set of commands ⇒ `-o json` and fixed exit codes hold for both.
+- **One set of commands powers both the UI and the CLI**: the same commands ⇒ `-o json` on the command line only; fixed exit codes on both sides.
 - **Batch operations**: `m` marks one item, `M` a whole section; marks are type-locked (sandboxes and snapshots cannot mix); one confirmation, one summary, and failures record the reason per item without rolling back the batch.
-- **Official interfaces only**: the official Python SDK (health checks make a single REST call to `/health`; `csb admin` only passes through the official `cubemastercli`); `i` opens tmux / screen / Herdr.
+- **Official interfaces only**: the official Python SDK (with `csb admin` only passing through the official `cubemastercli`); `i` opens tmux / screen / Herdr.
 
 ## Install and launch
 
@@ -62,9 +62,9 @@ CSB is a tree-shaped console in your terminal. Resources live in the cluster; na
 
 | Needed | Why |
 | --- | --- |
-| Python ≥ 3.10 | Pure Python, no build step |
+| Python ≥ 3.10 (3.14.4 tested here) | Pure Python, no build step |
 | cubesandbox ≥ 0.7.3 | Official SDK, the only runtime dependency |
-| A real terminal (TTY) | A non-terminal prints `csb: give me a command - "csb help" lists them` and exits with **2**; `csb ls` does not need a TTY |
+| A real terminal (TTY) | In a non-terminal, csb prints `csb: give me a command - "csb help" lists them` and exits with **2**; `csb ls` does not need a TTY |
 | Cluster address and key | Defaults point at localhost |
 
 Official SDK **0.7.3**, local cluster **platform** **v0.7.3**. Defaults are `http://127.0.0.1:3000` plus a placeholder key for development; add `SSL_CERT_FILE` for self-signed certificates; to reach another cluster, change `CUBE_API_URL` / `CUBE_API_KEY` together.
@@ -87,28 +87,21 @@ pip install csbtui         # second choice: installs into the current env; a ven
 
 No `sudo`, and installation does not contact the cluster. You do not need to prepare a config file: the first command you run creates `~/.config/csb/` (with no `config.json`, built-in defaults are used). Once installed, type `csb` to enter the tree (only a real terminal gets in).
 
-### Developers: install from the source directory
-
-To change the code, or before publishing to PyPI, install from the source directory (inside a venv):
-
-```bash
-pip install .   # inside a venv; dependencies are installed automatically
-python3 csb.py  # runs without installing (source directory; the SDK is still required)
-```
-
 ### After installing, check three things
 
 ```bash
-csb --version  # is it installed (should print csb 0.1.0)
+csb --version  # is it installed (should print csb 0.1.1)
 csb tz         # clock skew between your machine and the server (time columns drift when the two zones disagree)
 csb ls         # can you reach the cluster (reads sandboxes only; creates no ledger entries; writes one audit line and reclaims dead sbx policies along the way)
 ```
+
+`csb ls` only reads the sandbox list, but every command writes one audit line; after a successful `ls` or `start`, CSB also reclaims "dead sbx policies" — it needs two separate sightings of the same one, at least 600 seconds apart, before acting; `CSB_AUTO_SBX_SWEEP=0` turns this off (see [Appendix: environment variables](#appendix-environment-variables)).
 
 ### After installing, which files are there
 
 ```text
 csbtui/
-├── csb.py                   command layer: 36 commands (CMDS holds 37 entries including _completions; every key pressed in the UI ends up here)
+├── csb.py                   command layer: 36 commands
 ├── csb_tui.py               tree console (the TUI, the only frontend)
 ├── pyproject.toml           packaging metadata
 ├── README.md                this file
@@ -117,22 +110,13 @@ csbtui/
 └── LICENSE                  MIT
 ```
 
-### Upgrade
-
-```bash
-pipx upgrade csbtui    # the pipx install
-pip install -U csbtui  # the pip install
-```
-
-This only swaps the CLI version; `~/.config/csb/` and resources on the cluster are untouched.
-
 ### Uninstall
 
 ```bash
 pipx uninstall csbtui      # removes the program only; ~/.config/csb/ stays
 ```
 
-For a source / venv install use `pip uninstall csbtui` (the same goes for editable installs).
+For a `pip` (non-pipx) install use `pip uninstall csbtui`.
 
 Things to know:
 
@@ -163,7 +147,7 @@ Type `csb` in a terminal to enter the tree.
 3. **network** — `on` / `off`.
 4. **allow out** (only when `on`) — pick a recently used set, `all`, or type one; `d` deletes the current set. Separate multiple sets with `,` `;` `、` `|` or spaces; empty entries and non-CIDR values are rejected on the spot. Choices are remembered: next time the cursor starts on `(review last egress profile)` (applies the whole set list and proxy, skipping the proxy page), on `(use template network policy)` when the template has a policy, otherwise on the current list.
 5. **proxy** (only when `on`) — pick a URL or `none`; `d` deletes the current one. Choices are remembered.
-6. **Volume** — pick a volume → path (Enter gives `/data`) → read-only or not; **it mounts as soon as you choose, with no second confirmation**; to mount nothing pick `(do not mount a volume)`, where "same as last time" sits on top and Enter reuses it.
+6. **Volume** — pick a volume → path (Enter gives `/data`) → read-only or not; **it mounts as soon as you choose, with no second confirmation**; to mount nothing pick `(do not mount a volume)`, where `(same as last time: …)` sits at the top, and Enter reuses it.
 
 **Work inside** — on a sandbox node press `e` to run one command, or `i` for a real terminal (copies the command, opens a tmux window; inside Herdr it can open another Herdr pane); Enter shows full details, `o` shows runtime logs, `?` lists every key.
 
@@ -173,11 +157,11 @@ Type `csb` in a terminal to enter the tree.
 
 **Clean up** — press `k` to delete sandboxes (one confirmation). **Deleting a sandbox does not delete its snapshots** (platform design): the node turns into a `[D]` signpost in place with snapshots hanging under it. To clean it fully, empty the snapshots and sandboxes below first, then go back to the signpost and press `d`.
 
-**Filter** — `/` filters nodes by substring, `Esc` clears it (pressing `/` and entering an empty string works too); the tree refreshes every 2 seconds, and `r` refreshes immediately. Filterable: name / id / state / type / family / template / volume name (a volume name lists the sandboxes that mount it, parent node included). **When a filter and marks coexist, `Esc` clears the filter first and keeps the marks; a second press clears the marks** (the status line reports how many marks remain).
+**Filter** — `/` filters nodes by substring, `Esc` clears it (pressing `/` and entering an empty string works too); the tree refreshes every 2 seconds, and `r` refreshes immediately. You can filter by name / id / state / type / family / template / volume name (a volume name lists every sandbox that mounts it, including the parent node). **When a filter and marks coexist, `Esc` clears the filter first and keeps the marks; a second press clears the marks** (the status line reports how many marks remain).
 
-- **Marks and batches** — `m` marks the current node (and makes it the anchor); after moving the cursor, `M` marks or unmarks a whole section; `m` / `M` / `Esc` only touch marks. **Type lock**: a batch cannot mix sandboxes and snapshots; one confirmation, one summary.
+- **Marks and batches** — `m` marks the current node (and makes it the anchor); after moving the cursor, `M` marks or unmarks a whole section. **Type lock**: a batch cannot mix sandboxes and snapshots; one confirmation, one summary, and failures record the reason per item without rolling back the batch.
 - The 9 keys that act on a whole batch: `k` kill, `n` snapshot, `p` pause, `u` resume, `t` timeout, `c` clone, `d` delete snapshot / clean leftover, `A` adopt, `e` exec.
-- Batches only accept those 9 keys (`s` / `i` / `o` / `f` / `b` / `l` / `a` do not); `commit` runs one at a time and cannot be rolled back as a batch; the command line has 7 batch commands: `kill` / `pause` / `resume` / `timeout` / `clone` / `snaprm` / `exec`.
+- Batches only accept those 9 keys (`s` / `i` / `o` / `f` / `b` / `l` / `a` do not); `commit` runs one sandbox per call; rollback (`rb`) takes a single sandbox and cannot be batched; the command line has 7 batch commands: `kill` / `pause` / `resume` / `timeout` / `clone` / `snaprm` / `exec`.
 
 > **`A` batches only reach unnamed sandboxes**: unnamed templates cannot be marked; naming is always one at a time.
 
@@ -195,9 +179,9 @@ Type `csb` in a terminal to enter the tree.
 | `[E]` | External signpost | The snapshot records a source id, yet that sandbox cannot be found on either side |
 | `[X]` | Leftover | The local ledger has it but the server no longer does |
 
-- `(running)` / `(paused)` are platform states; `(deleted)` / `(external)` / `(stale)` / `(orphan)` are labels CSB attaches to signposts and leftovers (see the small-markers table under [Appendix: node types at a glance](#appendix-node-types-at-a-glance)); the `(3)` after a name is the number of **direct** children (a signpost counts).
+- `(running)` / `(paused)` / `(deleting)` are platform states; `(deleted)` / `(external)` / `(stale)` / `(orphan)` are the labels CSB attaches to signposts and leftovers; `(N)` is the number of **direct** children below (a signpost counts); the indented `*` / `>` / `#id` mean mark / cursor / duplicate-name disambiguation.
 - The list above covers the **commonly used ones only**; **all 20 types are in [Appendix: node types at a glance](#appendix-node-types-at-a-glance)**.
-- **The marker shows the type, the name column shows the server**: sandboxes always read `[S] <name>` or `[S] <id8>`; anything written into the local ledger is adopted by pressing `A` (`[U]` is reserved for the one that has no name on either side).
+- **The marker shows the type, the name column shows the server**: sandboxes always read `[S] <name>` or `[S] <id8>`; press `A` to adopt a node into the local ledger (`[U]` is reserved for the one that has no name on either side).
 - **A clone's temporary snapshot is tagged `(in use by N sandbox)`**: N is the number of sandboxes using it **right now**; CSB **does not reclaim it automatically** — clean it yourself with `csb snaprm <id> --yes`.
 - **`[s] unattached snapshots`**: snapshots whose source is unknown on both sides and that have no local ledger row gather in this row (`snap-xxxxxxxx (orphan)`); you can still start them with `csb start` and delete them with `csb snaprm`.
 
@@ -234,13 +218,15 @@ The rest (missing source → `[E]`, platform gives no source → unattached) is 
 | 2 | **ts** | server `startedAt` (second precision); a snapshot-sourced sandbox carries the source time | ordering, restoration |
 | 3 | **id** | 32 hex digits | the single anchor for tracing back |
 
-- **Family** = the root template alias; clones inherit it.
-- **The sequence high-water mark is never reclaimed** (delete `senpi_02` and the next sandbox is still `senpi_03`); it lives in `ledger/highwater.json`; only `csb label-reset` can push it back (destructive). If the ledger was deleted, CSB first backfills the highest number from the `csb.nseq` still alive on the server; if everything was deleted there is nothing to backfill and numbering restarts from 0.
-- **Renaming keeps the counter**: each template's alias is its own namespace; `tpl alias A B` carries the counter over to `B`; the count record under the old name `A` (the old key) is **kept only while sandboxes/snapshots still use that name prefix** (rename back to `A` and numbering continues), and is reclaimed on the spot otherwise (`CSB_AUTO_HW_RECLAIM=0` forces it to be kept forever); a commit template always names its sandboxes after its own `…-commit-<date>` name.
-- **alias and family differ**: when a template alias is not the family (for example `vd` / family `pi`), a new sandbox is named after the alias (`vd_01`); only when the alias equals the family is the family used.
-- **Naming when starting from a snapshot**: for `csb start <snapshot> --label cv_02`, the prefix of `--label` becomes its **naming family** (later clones continue `cv_03`, `cv_04`, …); only without `--label` does it inherit the source family, with the original lineage recorded in `ancestor`.
+| Term | In one line |
+| --- | --- |
+| Family | the root template alias; clones inherit it |
+| Sequence | the high-water mark is never reclaimed; only `label-reset` can push it back; if the ledger was deleted, CSB backfills it from the server metadata `csb.nseq` |
+| Rename counter | `tpl alias A B` carries the counter; the old key is kept only while resources still point at it, otherwise reclaimed |
+| Snapshot naming | a `--label` prefix becomes a new family; without it the source family is kept |
+| Name priority | metadata → template alias → `<family>_NN` |
+
 - **Cleaning dead high-water marks**: `csb tpl clean-hw` (dry-run by default) lists count records that nothing points at; `--yes` backs up `highwater.json` and then deletes them; old names in `alias_history` are always kept.
-- **Name priority**: metadata `name`/`csb.label` → template alias → `<family>_NN`; an existing name is kept in preference, and falls back to `<family>_NN` when the name breaks local rules or collides.
 - **A metadata name does not take a new sequence number** (`nseq` stays empty); when the name looks like `<family>_NN`, that number **counts toward the family high-water mark** (claims the number), so later automatic numbering cannot collide with it; a name without a sequence number claims nothing. Within one ledger, sequence numbers only go up (no reuse); only `csb label-reset` can push them back (destructive); `tpl alias` reclaiming an old key, `tpl clean-hw` deleting a count, and deleting the whole ledger all make old numbers assignable again.
 - **Reset** (`l` / `label-reset`, one confirmation): the family has no sandboxes on the server and no snapshots locally; live resources make it refuse.
   In the TUI, `l` on a template node acts on the **family alias** (not the template id).
@@ -250,7 +236,7 @@ The rest (missing source → `[E]`, platform gives no source → unattached) is 
 
 | Object | Named when | Rule | Renamable? | How |
 | --- | --- | --- | --- | --- |
-| Template alias | At creation or later | `^[a-z0-9][a-z0-9-]{0,63}$`, cannot start with `tpl-` / `snap-` | Yes | Press `a` on the node or run `csb tpl alias`; collisions are refused (the official API clears the original template's name) |
+| Template alias | At creation or later | `^[a-z0-9][a-z0-9-]{0,63}$`, cannot start with `tpl-` / `snap-` | Yes | Press `a` on the node or run `csb tpl alias`; collisions are refused (rc=2), see the NOTE below |
 | Template id | At creation | `tpl-` + 24 hex digits | No | — |
 | Sandbox id | At creation | 32 hex digits | No | — |
 | Sandbox name | At creation (written into metadata) | csb accepts `[\w-]{1,64}` (Unicode included; emoji / spaces / `.` are blocked by csb); **unique within the same family in the local ledger** — another ledger or the WebUI may still use the same name (distinguish with `#id`) | **No** (the official API has no update endpoint) | Delete and recreate, or recreate from a snapshot |
@@ -278,7 +264,7 @@ create ──► running ──pause──► paused ──resume──► runni
           terminated        terminated
 ```
 
-**A paused sandbox accepts only this**: `ls` / `info` / `snaps` / `logs` / `tree` are read-only, `resume` and `kill` work (a second `pause` is a no-op that returns 0); everything else returns `rc=3` (the message carries the reason and the fix). **The one exception is `csb net`**: changing the network while paused returns `rc=2` after printing `net: <name> is <state> - the network only changes while the sandbox is running` + `fix csb resume … --yes, then retry`.
+**A paused sandbox accepts only these commands**: `ls` / `info` / `snaps` / `logs` / `tree` are read-only, `resume` and `kill` work (a second `pause` is a no-op that returns 0); everything else returns `rc=3` (the message carries the reason and the fix). **The one exception is `csb net`**: changing the network while paused returns `rc=2`.
 
 **Success messages**: `start` / `clone` / `commit` / `snap` / `kill` / `rb` print two lines
 (name + action / `id  <full id>`); `resume` / `timeout` / `pause` print one line (`resume --timeout` adds an `idle TTL` line).
@@ -287,14 +273,14 @@ pi_52  started
 id  3ac4e4d59f5b4531b2b6c00da074cc9b
 ```
 
-CSB creates sandboxes with `on_timeout=pause`, a 30-day `timeout`, and **no** `auto_resume` (the platform default is `false`): they pause automatically when idle; because CSB does not pass `auto_resume`, a paused sandbox is not woken automatically and needs `csb resume` — other clients or platform settings may differ. Press `t` to change the idle duration (seconds; `0` = immediately, `-1` = never; greyed out while paused).
+CSB creates sandboxes with `on_timeout=pause`, a 30-day `timeout`, and **no** `auto_resume` (the platform default is `false`): they pause automatically when idle; because CSB does not pass `auto_resume`, a paused sandbox is not woken automatically and needs `csb resume` — if another client explicitly sets `auto_resume=true`, behavior differs. Press `t` to change the idle duration (seconds; `0` = immediately, `-1` = never; greyed out while paused).
 
 - **Fidelity**: CPU / memory / internal TCP state are kept across a pause, while external connections drop and applications reconnect after resume (see [Sandbox Lifecycle](https://cubesandbox.com/guide/lifecycle)).
 - `timeout` counts idle time: it resets only when the SDK performs an operation or an HTTP call reaches the sandbox directly; `ls`/`info`/looking at the panel do not count.
 - The platform default is `on_timeout=kill`; CSB uses `pause` by default to keep idle sandboxes from being reaped.
 - The effective deadline is `end_at` from `csb info` (never timing out = the platform omits the value and CSB prints `none`); every request refreshes it.
 - Nothing counts down while paused; the last setting is authoritative.
-- `pause` is asynchronous on the platform, so the old deadline still shows until it takes effect; `resume` returns 409 when the node has no capacity, and can be retried.
+- `pause` is asynchronous on the platform, so the old deadline still shows until it takes effect; `resume` returns 409 when the node has no capacity (Cubelet `130409`), and can be retried.
 
 ## Three kinds of snapshots are not the same thing
 
@@ -304,9 +290,9 @@ CSB creates sandboxes with `on_timeout=pause`, a 30-day `timeout`, and **no** `a
 | **Pause snapshot** | Created internally by the platform on `pause` | Lives and dies with the sandbox | Does not appear |
 | **Template snapshot** | An internal copy when the platform builds / distributes a template | Belongs to the template | Does not appear |
 
-CSB cloning does three things more than the official flow: copies carry `timeout` / `metadata` / `on_timeout`; the temporary snapshot is recorded in the ledger (findable and deletable); and CSB does not reclaim it automatically.
+CSB's cloning does three things the official flow does not: copies carry `timeout` / `metadata` / `on_timeout`; the temporary snapshot is recorded in the ledger (findable and deletable); and CSB does not reclaim it automatically.
 
-> Deleting a snapshot **by name** in a script: when the name is unique it deletes; when the name matches several snapshots CSB **refuses with rc=2**, printing only the first full id plus
+> Deleting a snapshot **by name** in a script: when the name is unique the command deletes it; when the name matches several snapshots CSB **refuses with rc=2**, printing only the first full id plus
 > `(+N more, see csb snaps)`; use full ids instead (several ids at once are fine, CLI batch).
 > When the platform still has a live reference (a sandbox runtime restored from this snapshot) it only **asks one more time**, and an answer of `y` deletes;
 > when it is still on the CSB tree (a sandbox uses it as a template) **it is refused without `--force`**.
@@ -332,8 +318,9 @@ On the official side a sandbox has only an id; names, families, lineage and audi
 ```
 
 - **Audit and ledger**: once the audit exceeds `CSB_AUDIT_MAX` (100 MiB by default) it is renamed and archived; a corrupt ledger is backed up before continuing, dropping only the bad lines.
+- **The ledger's `version` / `schema` is a schema number, not the csb version**: it is always `1`; do not change it to `0.1.x` — older builds treat the whole ledger as a foreign format and rebuild it empty (backed up first, but every name is lost). Newer builds keep the data, warn, and normalise it to `1` on the next write; old files with no such field are kept as schema 1 too.
 - **Opening the TUI auto-adopts**: it runs on every start, adopting only sandboxes the ledger does not have yet (existing records are not rewritten), and it writes locally only; `CSB_AUTO_NO_ADOPT=1` turns it off. Naming order and collision rules are in "Name priority" under [Naming and lineage](#naming-and-lineage).
-- **Undo**: when the bottom-right hint shows it, press `U` to undo only the adoptions not yet finalized in this run; a normal exit finalizes them; to change later use `csb adopt --undo` (includes finalized ones) or `csb clean --ledger`; editing the JSON by hand is the last resort. Read-only commands create no ledger rows, but every command writes one audit line (`CSB_AUDIT=` turns it off). **The next launch adopts again**.
+- **Undo**: when the hint appears in the bottom-right, press `U` to undo only the adoptions not yet finalized in this run; a normal exit finalizes them; to change later use `csb adopt --undo` (includes finalized ones) or `csb clean --ledger`; editing the JSON by hand is the last resort. Read-only commands create no ledger rows, but every command writes one audit line (`CSB_AUDIT=` turns it off). **The next launch adopts again**.
 - **Moving machines / backups / several machines on one cluster = copy the whole `~/.config/csb/`** (all three data files):
   ```bash
   cp -a ~/.config/csb/ /your-backup-dir/csb-$(date +%Y%m%d)/
@@ -420,41 +407,37 @@ The decision is made once when the sandbox is created; afterwards `csb net` can 
 | `on` | `--allow-out` or `--proxy`, at least one | Everything open by default; a list = allow only those (block the rest); a proxy = egress goes through it |
 | not passed | — | Inherit the template policy (= platform default when the template has none); write `off` explicitly to cut the network |
 
-- Explicit `--net on` with neither option → error (rc=2), no sandbox is created.
+- `--net on` is not "everything open" but "this time you pick the policy": writing `--net on` without `--allow-out` or `--proxy` is an error (rc=2), and no sandbox is created.
 
 - `--allow-out`: passing a list means **allow only those CIDRs or domains** (`example.com` / `*.example.com`; domains need DNS, and csb also sends `deny_out 0.0.0.0/0`).
   The allow-list passes DNS automatically: after creating the sandbox, csb reads its `/etc/resolv.conf` and adds the resolvers to the list (falling back to `--dns-server <ip>` when unreadable); use `--no-dns` to allow IPs strictly only. `all` = allow everything, but the three senders differ: `csb net` sends an empty list, `csb tpl build` writes no policy, and `csb start` sends `allow_out ["0.0.0.0/0"]` + `deny_out []`.
 - Templates can bake the network in: `tpl build --allow-out <cidr> --deny-out <cidr> --no-internet` (no domains; `--allow-out all` = write no policy, inheriting resolves to fully open per platform default; templates have no DNS option). `start` **with no network flags at all = inherit the template**; for fully open pass `--allow-out all`. The CLI has no remembered mode (it is manual); remembering exists only on the TUI's two-column allow-out page: `(review last egress profile)` / `(use template network policy)`.
-- Proxy alone without a list = proxy host/32 + `0.0.0.0/0` + DNS.
+- With `--proxy` alone and no list, CSB automatically puts the proxy host (`/32`), `0.0.0.0/0` and DNS into the allow-list.
 
 ### Changing the network after creation: `csb net`
 
-`csb net <id> --allow-out <cidr|domain>[,...]` = allow-list; `--allow-out all` = fully open; `--net off` = fully cut off. The platform **replaces the whole set**, so csb fills everything in one call: an allow-list sends allow + deny `0.0.0.0/0` + `allow_internet_access=true`, plus the sandbox's resolvers (read from `/etc/resolv.conf`, or `--dns-server`); `all` sends an empty list = fully open on the platform; `off` sends `allow_internet_access=false`. `--dry-run` prints and stops; `-o json` returns `sandbox_id`/`allow_out`/`deny_out`/`allow_internet_access`/`dns`; non-tty needs `--yes`. The sandbox must be running (resume a paused one first). The local ledger's NETWORK section gains one line `set by csb at <time>` that other machines cannot see (the platform's `get_info` has no network field, so multi-endpoint sync is impossible). Domains after creation work: allow by hostname, block direct IP access.
+`csb net <id> --allow-out <cidr|domain>[,...]` = allow-list; `--allow-out all` = fully open; `--net off` = fully cut off. The platform **replaces the whole set**, so csb fills everything in one call: an allow-list sends allow + deny `0.0.0.0/0` + `allow_internet_access=true`, plus the sandbox's resolvers (read from `/etc/resolv.conf`; `--dns-server` is the fallback when unreadable); `all` sends an empty list = fully open on the platform; `off` sends `allow_internet_access=false`. `--dry-run` prints and stops; `-o json` returns `sandbox_id`/`allow_out`/`deny_out`/`allow_internet_access`/`dns`; non-tty needs `--yes`. The sandbox must be running (resume a paused one first). The local ledger's NETWORK section gains one line `set by csb at <time>` that other machines cannot see (the platform's `get_info` has no network field, so multi-endpoint sync is impossible). After creation you can also allow by domain, but only hostnames — direct IP access stays blocked.
 
 `--proxy` only injects the proxy URL into the proxy env vars: `HTTP_PROXY` / `HTTPS_PROXY` / `http_proxy` / `https_proxy` (plus the `NO_PROXY` / `no_proxy` allow-list); it is not `csb url`, and the sandbox network itself is unchanged (use `--allow-out` or `csb net` for CIDRs). Allow-list DNS is always allowed automatically (the TUI has no DNS page; on the CLI only `--no-dns` blocks it); resolvers are not hard-coded and `--dns-server` overrides them.
 
-The TUI's `s` has three pages: `network` → `allow out` → `proxy` (`off` skips two pages). Each page's keys are written in the title (`Enter=choose   d=delete   Esc=back`) and the last choice is remembered.
+The TUI's `s` opens a sandbox: it first asks for a name and a count, then walks three pages network → allow out → proxy (`off` skips the allow-out and proxy pages and goes straight to volume and apply); `Enter` applies, `d` deletes, `Esc` goes back, and the last choice is remembered.
 
-- The `(review last egress profile)` entry at the top of `allow out` is the detail box (list and proxy); Enter applies it and skips the proxy page;
-- When the template has a policy there is an extra `(use template network policy)` showing five faces — internet / allow_out / deny_out / dns / proxy — and Enter applies it;
-- `Esc` goes back.
-
-Proxy priority: `--proxy` > `HTTPS_PROXY`/`HTTP_PROXY` > the remembered `proxy_url`; with none of them it connects directly; `CSB_AUTO_PROXY=0` disables the injection only. Changing proxies: same IP with a different port is fine; a different IP needs a new sandbox. See a sandbox's current state in the NETWORK section of `csb info <id>`; see a **template policy** in the NETWORK section of `csb tpl info <alias>`.
+Proxy priority: `--proxy` > `HTTPS_PROXY`/`HTTP_PROXY` > the remembered `proxy_url`; with none of them it connects directly; after picking "none - no proxy env" in the TUI the remembered value is empty, so the host env proxy is **no longer injected** (pick it again or pass `--proxy` to restore); `CSB_AUTO_PROXY=0` disables the injection only. Changing proxies: same IP with a different port is fine; a different IP needs a new sandbox. See a sandbox's current state in the NETWORK section of `csb info <id>`; see a **template policy** in the NETWORK section of `csb tpl info <alias>`.
 
 ## Command-line reference
 
 > [!IMPORTANT]
 > **Interface contract**: `-o json` prints structured data; exit codes are **`0` success / `1` cancelled / `2` usage error / `3` runtime or remote failure** (`4` is UI-only; interruption by a signal is `128+N`, see [Exit codes](#exit-codes-global-flags-and-signals)).
-> A misspelled name always exits **2**: most commands print `no sandbox: X` + `fix csb ls lists them; full ids: csb ls -o json`; `kill` prints `unknown sandbox: X (see csb ls; full ids: …)`.
+> A misspelled name always exits **2** (most commands print `no sandbox: X`; `kill` prints `unknown sandbox: X`), with the fix line pointing at `csb ls`.
 > When pointed at a snapshot / template, **only `csb info`** adds `(that is a snapshot - …)` / `(that is a template - …)`.
 > Sandbox targets accept full ids only, see [How to write a target](#how-to-write-a-target-name-or-id); `kill` also returns **2** when it cannot find one, printing `unknown sandbox: ...`.
-> `-o json` is not consent: non-interactive runs still need `--yes` (rc=2 without it).
+> `-o json` is not consent: non-interactive runs still need `--yes`.
 
 **Every command has exactly one output shape**: the top level is the ledger identity columns (`sandbox_id` / `label` / `state` / …), while the server's untouched object sits under `info`; `info -o json` on a paused sandbox returns only the identity columns (no runtime query).
 
-`-o json` applies only to commands that print JSON: `shell` and `vol mount` exit with **2** before sending any request and suggest an alternative; `help` / `watch` / `admin` refuse anyway. `csb version -o json` (and `csb --version -o json`) returns `{"version":"0.1.0"}` with rc=0.
+`-o json` applies only to commands that print JSON: `shell` and `vol mount` exit with **2** before sending any request and suggest an alternative; `help` / `watch` / `admin` refuse anyway. `csb version -o json` (and `csb --version -o json`) returns `{"version":"0.1.1"}` with rc=0.
 ```bash
-csb --version  # csb 0.1.0
+csb --version  # csb 0.1.1
 csb help       # command-line usage; ? inside the UI is the key table (deliberately two different references)
 ```
 
@@ -465,10 +448,17 @@ csb help       # command-line usage; ? inside the UI is the key table (deliberat
 
 ### How to write a target (name or id)
 
-- **Sandbox targets accept ids only**: a full id or a prefix of **at least 24 characters**; a name is **rejected on the spot** (`rc=2`), printing the full id to use instead.
+- **Sandbox targets accept the full id only**: a name is **rejected on the spot** (`rc=2`), printing the full id to use instead.
 - **Exceptions**: `kill <name>` can clear a leftover row that is gone from the server but still in the local ledger; `rb` with a single argument accepts a unique snapshot name.
-- **The 4 places that still use names**: template alias, `label-reset <family>`, volume name (which is the id), snapshot name (`csb start`); names themselves appear only in display and in automatic snapshot naming.
-- The `a1` / `a2` in examples below and `zoo-01` in the appendix are illustrative names only; use real full ids (or at least 24-character prefixes).
+- **Where names still work**: template alias, `label-reset <family>`, volume name (which is the id), snapshot name (`csb start` / `snaprm` / `rb` single argument), `kill <name>` (leftover rows only); a sandbox's own label is used for display and automatic snapshot naming only.
+- The `zoo-01` in the appendix is an illustrative name only; it appears in `--label` and snapshot names. Fill in full ids for sandbox targets.
+
+| Target | Accepts a name? | How to pass it |
+| --- | --- | --- |
+| Sandbox (`kill` / `pause` / `resume` / `timeout` / `clone` / `exec` / `info`…) | **No**; the only exception is `kill <name>` clearing a leftover row | the full 32-hex id (`csb ls -o json`) |
+| Snapshot (`snaprm`, `rb` single argument) | A **unique** name; several need ids | names come from `csb snaps` |
+| Template (`tpl rm` / `tpl alias` / `start`) | An alias or the full `tpl-` id | `csb tpl ls` |
+| Volume (`vol rm` / `start --vol`) | The name is the id | `csb vol ls` |
 
 ### Sandboxes and snapshots
 
@@ -485,10 +475,10 @@ csb start <template|template-id|alias|snapshot-id|snapshot-name> [--label <name>
 - `--allow-dns`: allow-list DNS is already allowed automatically; writing it explicitly prints a reminder; use `--no-dns` to allow IPs strictly only.
 - `vol create --driver <name>`: the official SDK driver; omit it for the platform default.
 
-```bash
---vol mounts an existing volume only; for read-only append ro after the volume name (/data:ztvolro), not `-ro`, and no third `:ro` segment.
---net on opens the internet, so --allow-out <cidr|domain>[, ...] or --proxy <url> must be given too, at least one (for example --allow-out all); with neither it is rc=2 and no sandbox is created.
-csb start <template|alias> --n <count> [--concurrency M] [--label <base name>]  # with a base name it is <name>_01 … <name>_0N
+```text
+--vol mounts an existing volume only; for read-only append `ro` after the volume name (`/data:ztvolro`).
+--net on is not "everything open" but "this time you pick the policy": it must be paired with --allow-out <cidr> or --proxy <url>; with neither it is rc=2 and no sandbox is created.
+csb start <template|alias> --n <count> [--concurrency M] [--label <base name>]  # with a base name and --n ≥ 2 it is <name>_01 … <name>_0N; --n 1 (or no --n) keeps the base name
 csb clone <id> [--n <count>] [--concurrency M]                           # takes a temporary snapshot shared by the copies; not reclaimed automatically
 csb snap <id> [snapshot name]                                            # works with volumes mounted too; the snapshot does not include volume data
 csb snaps [-o json]                                                      # same as snap ls (list snapshots)
@@ -498,12 +488,12 @@ csb rb <id> <snapshot-id>                                                # rollb
 csb pause|resume|kill <id...>                                            # multiple ids supported
 csb timeout <id...> <seconds>
 csb info <id>                                                            # includes runtime_snapshot and allow_out (the value a new sandbox would get)
-csb exec <id...> [--env K=V] -- <command>                                # runs on several ids in order; a batch failure is rc=1, a single failure rc=3
+csb exec <id...> [--env K=V] -- <command>                                # runs on several ids in order; a batch failure is rc=1, a single failure rc=3; a batch shares one --env set across all of them (handy for batch egress)
                                                                          # egress proxy env is added by csb automatically (CSB_AUTO_PROXY=0 disables)
 csb tree [-o json]
 csb clean <id|snapshot-id>                                               # clears signposts; non-TTY needs --yes
-csb clean --ledger [--yes]                                               # clears sandbox records (entries/noauto; backs up first, asks twice; --force not applicable),
-                                                                         # keeps family_highwater / templates
+csb clean --ledger [--yes]                                               # clears sandbox records (backs up first, asks twice; --force not applicable),
+                                                                         # keeps the family high-water marks / templates
 csb clean --ledger --hard [--yes]                                        # also clears the snapshot ledger / high-water marks / templates (backs up all three; --force not applicable)
 csb prune [--entries] [--policies] [--dry-run] [--yes]                   # clears dead data only (entries / sbx policies absent from the complete cluster list); backs up before writing; --force not applicable
 ```
@@ -512,7 +502,7 @@ csb prune [--entries] [--policies] [--dry-run] [--yes]                   # clear
 `--allow-out <cidr[,cidr]>` or `--proxy <url>`; missing both is an immediate error.**
 The TUI remembers the last list and proxy; the CLI does not. Omitting `--net` = inherit the template policy.
 Where the proxy address comes from, and its priority, is in [Egress (proxy)](#egress-proxy); with none it uses no proxy (direct).
-`--vol` and `--meta` are both repeatable; **`--vol` is the only CSB command-line entry that mounts a volume at sandbox creation** (`vol mount` returns rc=2; the platform/WebUI may differ; once mounted it cannot be unmounted; **do not pass `--vol` when starting from a snapshot** — the snapshot already carries the mounts it had, CSB blocks it locally before sending, and the platform silently ignores a different volume).
+`--vol` and `--meta` are both repeatable; **`--vol` is the only CSB command-line entry that mounts a volume at sandbox creation** (`vol mount` returns rc=2; the platform/WebUI may differ; once mounted it cannot be unmounted; **do not pass `--vol` when starting from a snapshot** — the snapshot already carries the mounts it had, and CSB blocks it locally before sending (rc=2); if that guard is bypassed the platform answers HTTP 400 `volumeMounts must match the snapshot's volume mounts`).
 
 ### Into the sandbox, and logs
 
@@ -520,8 +510,6 @@ Where the proxy address comes from, and its priority, is in [Egress (proxy)](#eg
 csb exec <id> -- <command>                # non-zero remotely ⇒ csb exits 3
 csb exec <id> -- sh -c '...'              # nested quotes: wrap in sh -c yourself
 csb exec <id> --env FOO=1 -- env          # env for this one command only (repeatable)
-csb exec a b c --env HTTPS_PROXY=http://<proxy-host>:<port> -- curl -m5 https://www.google.com
-                                          # same env for several sandboxes (use this for batch egress)
 csb shell <id> [-- <command>]             # needs a real terminal; use exec when non-interactive
 csb int <id> [-- <keyword>] [--sig KILL]  # without a keyword it only lists candidates
 csb logs <id> [lines]                     # platform logs; clock noise filtered by default
@@ -529,9 +517,9 @@ csb url <id> [port]                       # default 49983
 csb ls-file <id>:/data                    # list a directory (same as csb ls <id>:/data)
 csb cp <id>:/data/a.txt ./a.txt           # pull a single file
 csb cp <id>:/data/dir ./                  # a directory; asks once only when it would really overwrite
-csb cp ./x <id>:/data/                    # upload; when the port is unreachable and the file is large (≥8 MiB) it asks Y/N first
+csb cp ./x <id>:/data/                    # upload; ≥8 MiB tries the public port; if the port fails, CSB asks Y/N before falling back to envd
 csb cp <id>:/data/big.bin ./              # large download: asks Y/N when the port is unreachable, and N copies nothing
-csb cp <id>:/root/big.bin ./              # ≥8 MiB automatically uses the sandbox public port
+csb cp <id>:/root/big.bin ./              # ≥8 MiB first tries the sandbox public port, falling back to envd without python3
 csb cp <id>:/root/big.bin ./ --via files  # force the official channel
 csb mk <id>:/work/logs
 csb mv <id>:/a <id>:/b                    # within one sandbox; both sides must spell out <id>:
@@ -539,13 +527,13 @@ csb rm <id>:/a                            # non-interactive needs --yes; a path 
 csb watch <id>:/work                      # one level only; a stream, no -o json
 ```
 
-Everything after `exec` is **one** command, handed to the sandbox shell (arguments joined into a single line); pipes / redirects / nested quotes need your own `sh -c '…'`.
+`exec` passes the whole tail as **one** command to the sandbox shell (arguments joined into one line); pipes / redirections / nested quotes are yours to wrap in `sh -c '…'`.
 
-**exec output limit**: CSB measures the size inside the sandbox first; ≤64 MiB comes back directly; >64 MiB returns `CSB_OUT_TOO_BIG` (rc=2), so use `--out` instead.
+**exec output limit**: CSB measures the size inside the sandbox first; ≤64 MiB comes straight back, while >64 MiB is an error with no output returned (rc=2) and the error line tells you to use `--out`. For large output, start the run with `--out` from the beginning; the dropped output cannot be recovered afterwards.
 
-`exec --out /tmp/out` writes the output into a sandbox file and is not subject to the 64 MiB print limit; fetch it with `csb cp <id>:/tmp/out ./`.
+`exec`'s `--out /tmp/out` writes the output into a sandbox file (stdout and stderr into the same file), unaffected by the 64 MiB print limit; fetch it afterwards with `csb cp <id>:/tmp/out ./`.
 
-When an upload hits 413 or a full disk, CSB asks Y/N first; if it still fails it prints "does not fit in the sandbox disk" instead of only the raw 413.
+Uploads of ≥8 MiB try the public port first; only when the port fails and CSB falls back to envd does it ask Y/N (regardless of file size); when the platform rejects the chunks (413 / disk full) the error reads `cp: upload failed - the file does not fit in the sandbox disk` (rc=3), not the raw 413.
 
 | Command | What it runs | When to use it |
 | --- | --- | --- |
@@ -556,34 +544,40 @@ When an upload hits 413 or a full disk, CSB asks Y/N first; if it still fails it
 
 ### How exec / cp / shell work, and the trade-offs
 
-Large files through envd keep the whole payload in memory, so each has its fallback and cost.
-
-- **exec**: output ≤64 MiB prints directly; beyond that `--out /tmp/out` writes a file and `csb cp` fetches it (streamed replies also stay in memory). Cost: an extra cp step and a staging copy inside the sandbox.
-- **cp**: small files (<8 MiB) stream through envd; ≥8 MiB first tries the sandbox public port (needs python3, direct, preferred), and only when that fails falls back to envd (whole payload in memory, large files may OOM); uploads >16 MiB are cut into 16 MiB chunks (may hit 413, and the sandbox disk needs room for two copies). The costs, in order: compatibility, memory, disk.
+- **exec**: by default both streams together are capped at 64 MiB; beyond that the whole output is dropped with rc=2 and the error line tells you to use `--out`. For larger output, write it into the sandbox with `--out` from the start, then fetch it with `csb cp`. Cost: one extra cp step and a staging copy inside the sandbox.
 - **shell**: once cumulative output passes 64 MiB (`CSB_SHELL_MAX`) it prints one warning and does not interrupt. Cost: the terminal slows down with a lot of output.
+
+**cp boundary 8 MiB**: below it goes through envd; at or above it CSB first tries the public port (the sandbox needs python3).
+
+| Size | Route | Note |
+| --- | --- | --- |
+| <8 MiB | envd | download = stream; upload = whole file written in one go |
+| ≥8 MiB | public port | download GET, upload PUT |
+
+- **The public port is preferred**: fast, and the file does not pass through sandbox memory; without python3 in the sandbox the whole route is unusable and CSB falls back to envd automatically.
+- **Fall back to envd only when the port fails**: downloads always stream; uploads write the whole file for ≤16 MiB, and only files >16 MiB are cut into 16 MiB slices and `cat`-merged (peak disk use is 2×, a failure may leave `/tmp/.csb-p*` behind); before falling back it asks Y/N, non-tty needs `--yes`, and `N` does not copy.
+- **envd is the fallback**: the payload stays in sandbox memory, and a large file may OOM the sandbox.
+- **413 / disk full**: prints `cp: upload failed - the file does not fit in the sandbox disk` (rc=3) and does not hand you the raw 413.
+- **Forcing a route**: `--via http` / `--via files`.
 
 ### Templates, volumes and adoption
 
 ```bash
-csb commit <id> [--alias name]                            # one sandbox per call (no bulk form);
+csb commit <id> [--alias name]                            # one sandbox per call;
                                                           # passing two names is refused with rc=2
-csb tpl ls|info|alias|rm                                  # rm scans lineage across the whole server first; CSB refuses when a snapshot still depends on it,
-                                                          # --force bypasses only that CSB check; the platform still blocks "a live sandbox uses it"
-                                                          # (still in use, kill that sandbox first); if a sandbox's template was deleted long ago
-                                                          # and the lineage is broken, the platform may no longer count it under this template and let it through
+csb tpl ls|info|alias|rm                                  # rm scans lineage first; CSB refuses when a snapshot or a live sandbox depends on it,
+                                                          # --force bypasses only the CSB check, the platform still blocks
 csb tpl build --image <image> --alias <name> [--disk 1G] [--mem 500M] [--cpu 1000] [--allow-out <cidr[,cidr]|all>]
-csb vol ls|create|mount|rm                                # mount does nothing: prints a warning then rc=2; volumes mount only at sandbox creation
-                                                          # create prints the result + a short note (--quiet keeps only the result); full notes in `csb help vol` (TUI: V opens the volume page, ? shows the notes)
+csb vol ls|create|mount|rm                                # mount does nothing: prints a warning then rc=2; volumes mount only at sandbox creation; create prints the result + a short note (--quiet keeps only the result); full notes in `csb help vol` (TUI: V opens the volume page, ? shows the notes)
 csb adopt <id> [--as name] [--family family]              # brings a sandbox created elsewhere into the tree
 csb adopt --all                                           # adopt every sandbox that has no name yet
-csb adopt --undo                                          # undo every record written by automatic adoption (including finalized ones; manual adoptions untouched)
-                                                          # the TUI's U undoes only this run's unfinalized ones; the next launch adopts again
+csb adopt --undo                                          # undo every record written by automatic adoption (including finalized ones; manual adoptions untouched); the TUI's U undoes only this run's unfinalized ones, and the next launch adopts again
                                                           # **runs immediately without asking** — preview with `--dry-run` first (it deletes ledger records only; sandboxes on the server stay)
 csb label-reset <family> [--start N] [--yes]              # resets a family's numbering base (one confirmation; **works from both CLI and TUI**: the `l` key on a template node, or this command);
                                                           # refused while the family has live sandboxes or local snapshots;
                                                           # non-tty (scripts / pipes) needs `--yes`, otherwise it asks and cannot read an answer
 csb start <snapshot-id> --label <family>_<NN>             # start a sandbox straight from a snapshot (hanging under it), then commit it into a template
-csb snap <id> <name>                                      # a taken name is refused (names are permanent; with several snapshots sharing a name any by-name command is rc=2 — csb does not guess)
+csb snap <id> <name>                                      # a taken name is refused (names are permanent; when several snapshots share a name any by-name command is rc=2 — pass the full id instead)
 csb admin -- cubemastercli <official subcommand + args>   # passes through to the official CLI (the program name must be given separately)
 csb tz [-o json]                                          # local timezone / clock skew to the server / how timestamps read
 csb tpl doctor [--probe <alias>] [--fix] [--node <node>]  # health check after boot: is the template still usable / how many sandboxes and ledger rows;
@@ -608,19 +602,21 @@ csb tpl doctor [--probe <alias>] [--fix] [--node <node>]  # health check after b
 
 ### Batch and concurrency
 
-`-o json` **cannot be combined with batches**: several names are **rejected on the spot** (rc=**2**, with `bulk over N labels is text-only (-o json is per sandbox; run labels one by one)`). For JSON, run them one at a time.
+`-o json` **cannot be combined with batches**: several targets are rejected on the spot (rc=**2**, with `bulk over N labels is text-only (-o json is per sandbox; run labels one by one)`). For JSON, run them one at a time.
 
 ```bash
-csb pause a1 a2 a3
+csb pause <id1> <id2> <id3>
 csb pause --all         # pause every running sandbox together (handiest when shutting the cluster down;
                         # it lists the whole cluster first; non-tty without --yes is blocked;
                         # --list / --dry-run only preview, writing nothing)
-csb timeout a1 a2 3600  # the last argument is seconds (0 = immediately, -1 = never expire)
-csb kill a1 a2 --yes
+csb timeout <id1> <id2> 3600  # the last argument is seconds (0 = immediately, -1 = never expire)
+csb kill <id1> <id2> --yes
 ```
 
+Replace `<id1>` with the full ids printed by `csb ls -o json`.
+
 Starting several at once (or cloning several copies) uses `--n` with `--concurrency`: `csb start senpi --n 8 --concurrency 4` = start 8 sandboxes, at most 4 running at a time; valid only on `start` / `clone`, and `--concurrency` must be ≥ 1. `--n` takes 1..20; above 20 asks once more on a tty (`[y/N]`), and non-tty needs `--yes`.
-The only seven commands that accept several **full ids** (or at least 24-character prefixes) at once are: `kill` / `pause` / `resume` / `timeout` / `clone` / `snaprm` / `exec`; names are given only to `start` and `--label`.
+The only seven commands that accept several **full ids** at once are: `kill` / `pause` / `resume` / `timeout` / `clone` / `snaprm` / `exec`; names are given only to `start` and `--label`.
 
 ## Exit codes, global flags and signals
 
@@ -629,11 +625,13 @@ The only seven commands that accept several **full ids** (or at least 24-charact
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Cancelled (`Esc` / `Ctrl-C` stops this wait; cancelling mid-batch also returns 1); **a partially failed `exec` batch also returns 1**; other subcommand batch failures return `3`, usage errors `2` |
+| `1` | Cancelled (`Esc` / `Ctrl-C` stops this wait; cancelling mid-batch also returns 1); **a partially failed `exec` batch also returns 1** |
 | `2` | Usage error |
 | `3` | Runtime or remote failure |
 | `4` | **UI only**: the terminal vanished; clues are in `~/.config/csb/log/tui-error.log` |
-| `128+N` | **Interrupted by a signal** (N = signal number, e.g. `143` = `SIGTERM`, `129` = `SIGHUP`, `131` = `SIGQUIT`): csb restores terminal settings before exiting; `Ctrl-C` is `1` (cancelled), not 128+N |
+| `128+N` | **Interrupted by a signal** (N = signal number, e.g. `143` = `SIGTERM`, `129` = `SIGHUP`, `131` = `SIGQUIT`): csb restores terminal settings before exiting. `Ctrl-C` has two cases: while a CLI command waits it means cancel and returns `1`; on the TUI main screen it exits the TUI (same as `q`) |
+
+A partially failed `exec` batch returning `1` is the exception: its failures are usually "the command itself exited non-zero", which is kept apart from usage errors (`2`); other batch commands' failures mean "the operation did not happen" and return `3` (usage errors still `2`).
 
 ### Global flags
 
@@ -648,14 +646,14 @@ The only seven commands that accept several **full ids** (or at least 24-charact
 |  | `--node` | For `tpl doctor --fix` only: which node the redo lands on; used when the template lacks `source_image_ref` (the error says so) |
 |  | `--list` | Batch commands (`kill` / `pause` / `resume` / `timeout` / `clone` / `snaprm`) print "what would happen" and change nothing; `int --list` = list processes, `snap --list` = preview one snapshot (each keeps its own meaning; not global) |
 |  | `-h` / `--h` / `--help` | Print usage and exit; valid anywhere (`csb kill <id> --h` prints too and does not execute). Use `csb help [topic]` for the manual and topics |
-| Scope | `--all` | Everything: `adopt` adopts all, `pause` pauses all, `logs` does not filter noise, `cp` copies skipped files too |
+| Scope | `--all` | Everything: `adopt` adopts all, `pause` pauses all (the whole cluster, not just your ledger), `logs` does not filter noise, `cp` copies skipped files too |
 |  | `--undo` | Undo every record written by automatic adoption, finalized ones included (`adopt --undo`; the TUI's `U` undoes this run only) |
 |  | `--ledger` | Clear **sandbox records** (`clean --ledger`; details in the command section); with `--hard` it also clears the snapshot ledger / high-water marks / templates |
 |  | `--force` | Cross-dependency / forced mode (`tpl rm` / `snaprm`); **it is not confirmation** — non-tty still needs `--yes`. `csb int` also needs it to touch platform-provided services (envd / jupyter) — once touched they can only be deleted and rebuilt. It cannot override platform-side protection |
 | Debug | `--debug` | Print one diagnostic line to stderr (version, command, ledger path) |
 | Timing and channel | `--async` | `start` / `clone` return without waiting for readiness; with `--async` both say `requested (--async, not waited)` in the completion line instead of `started` / `cloned` — the state was not verified; without `--async` they say `started` / `cloned` literally |
 |  | `--via` | For `cp` only: `http` goes **first** to the sandbox public port, and on failure prints `note: port failed (…)` and falls back to envd automatically (large files ask Y/N first); `files` skips the port and forces the official channel (envd streaming / >16 MiB chunking) |
-|  | `--quiet` | Suppresses only the 3-line short note of `vol create`; both `vol mount` and `start` with `--vol` still print the full 16-line volume note |
+|  | `--quiet` | Suppresses only the 3-line short note of `vol create`; both `vol mount` and `start` with `--vol` still print the full volume note |
 | Network | `--no-net` | New sandbox has no network, `allow_internet_access=False` (`start` only) |
 
 **"Print then stop" and "ask or not" are two different things**: non-interactively, destructive commands need `--yes`; `--dry-run` only prints and takes precedence over confirmation. `vol create` / `timeout` / `clone` / `snap` / `commit` never ask; `pause` / `resume` just do it non-interactively; `start` with `--vol` does not ask either (the TUI passes `--yes` automatically).
@@ -669,24 +667,23 @@ The only seven commands that accept several **full ids** (or at least 24-charact
 | --- | --- | --- | --- |
 | Resources and cleanup | Will it delete my resources automatically? | Local entries are kept by default; server resources are never deleted automatically | The server changes only when you run `kill` / `snaprm` / `tpl rm` / `d`; local dead records stay until you press `d`, and only `CSB_AUTO_HIDE=1` clears them automatically |
 |  | Where is my data, and how do I back it up? | `~/.config/csb/` | Copy the whole directory |
-| Names and ids | `kill` says `unknown sandbox: …` (rc=2) | The target is misspelled, or only an 8-character short id was given | Live sandboxes accept only a full id or a prefix of at least 24 characters; a name gives rc=2 plus the full id; a name in the local ledger can only clear a leftover row that is gone from the server (`kill`); check with `csb ls` first |
+| Names and ids | `kill` says `unknown sandbox: …` (rc=2) | The target is misspelled, or only an 8-character short id was given | Live sandboxes accept only the full id; a name gives rc=2 plus the full id; a name in the local ledger can only clear a leftover row that is gone from the server (`kill`); check with `csb ls` first |
 | Snapshots | `snaprm refused: … has N live ref(s)` | A sandbox runtime was restored from this snapshot; the platform allows deletion, it only asks once more | `--force`, or `kill` first; the definition of `--force` is in [Global flags](#global-flags) |
 |  | `snaprm refused: … is referenced` | It is still on the CSB tree | `csb kill <id> --yes`, or `csb snaprm <snapshot> --force`; to clear just the node use `d`; the TUI's `d` asks once more and only adds `--force` on a `y` |
 | Volumes | `vol rm refused: <volume> mounted by N sandbox` (plural suffixes to sandboxes) | A running sandbox still mounts it (CSB blocks locally first; the platform side is `130409`); deleting a volume is **irreversible** | `csb kill <id> --yes` first, then `csb vol rm <volume> --yes` |
 |  | `unknown volume: <name> (see csb vol ls)` | The name is misspelled or the volume was already deleted | Check with `csb vol ls`; the volume name is the volume id |
 | Network and proxy | `csb url` / sandbox services unreachable, or SDK writes fail | `CUBE_PROXY_NODE_IP` is missing and there is no wildcard DNS | Set it to the CubeProxy node IP; services must bind `0.0.0.0` |
-|  | **Want a sandbox to egress through a host proxy** | `--allow-out` is an **allow-list**: only matches pass, and public and private networks outside the list are blocked (csb sends `deny_out 0.0.0.0/0`, so `curl` outside the list returns 000). Proxy without a list is a different case: proxy host `/32` + `0.0.0.0/0` + DNS (see [Egress (proxy)](#egress-proxy)). To cut everything use `--no-net`. | **`csb start` in one step**: at creation, fold the host proxy address into the sandbox's `allow_out` (together with `0.0.0.0/0` and any CIDR listed in `CSB_INTERNAL_CIDR`) via a single `Sandbox.create(network=…)`. The proxy env is not written into the sandbox; `csb exec` / `csb shell` inject it per call (`CSB_AUTO_PROXY=0` disables). Verify: `csb exec <id> -- curl -m10 https://www.google.com` should return 302 (or 200). To change CIDRs after creation use `csb net <id> --allow-out …`; no rebuild needed. |
+| Network and proxy | Want the sandbox to use this machine's proxy (`--proxy` only, no list) | With `--proxy` only and no list, CSB automatically allows the proxy host, `0.0.0.0/0` and DNS (i.e. fully open) | At creation the proxy address is folded into `allow_out` (including `0.0.0.0/0`, `CSB_INTERNAL_CIDR`); verify with `curl -m10`, which should return 302/200 |
+|  | Changing the CIDRs after creation | The platform replaces the whole set | Use `csb net <id> --allow-out …`; no rebuild needed |
 |  | After resume it prints `resume did not stick`, or the error carries `130497` | The platform accepts resume then rolls back: the guest agent (`envd`) does not come up and the sandbox stays paused | Retry once; if it keeps failing, `csb start <template>` a new one and move files over with `csb cp` (the old paused sandbox keeps its data until you `csb kill` it) |
 | Templates and images | With a private registry, `tpl build` returns `server gave HTTP response to HTTPS client` | Missing the `http://` prefix (HTTPS is assumed without one) | Write the image as `http://registry.example.com:5000/ns/app:tag` |
 |  | `tpl build` keeps timing out | The platform build is stuck (image / probe / distribution) | `csb tpl doctor --probe <alias>`; check the official `cubemastercli tpl status --job-id <id>` |
 |  | After a reboot the **template no longer works** | The node's local template is gone | `csb tpl doctor --probe <alias> --fix` (names one first; add `--node <node-ip>` when it reports `source_image_ref`); if it still fails, rebuild with the official `template redo` |
-| Platform lifecycle | Deleting a **paused** sandbox first returns `503` + `Retry-After: 2` | It is entering paused, or another lifecycle holds the lock | Wait **2 seconds** and retry |
+| Platform lifecycle | Deleting a **paused** sandbox does not need a resume first | The platform clears the pause snapshot too, and the sandbox's name record goes with it | Just run `csb kill <id> --yes`; take a `csb snap` first if you want a restore point |
 |  | `410 Gone` | The sandbox **was already reaped by the platform** (idle timeout) | Check with `csb ls`; a `[D]` signpost stays in place |
-| UI and terminal | The UI seems unresponsive? | Check whether the timer is still running | Panels show `running... 12s`, the command line `waited Ns`; `Ctrl-C` / `Esc` stop only this wait. When a terminal wait ends it **leaves a `done in Ns` line** |
 |  | Can a signal interrupt my terminal settings? | No | csb restores the terminal before exiting (exit code 128 + signal); server-side operations are unaffected |
 |  | Pressed `i` and chose "copy" but the clipboard is empty | The terminal blocks OSC 52 (iTerm2 by default) | Inside tmux use `prefix + ]` to paste from the buffer (depends on tmux and terminal settings); CSB also prints the command in the panel |
 |  | An extra tmux window flashes and disappears | The command failed immediately | **Deliberate**: the window stays on `[csb] the shell exited with N` waiting for Enter |
-|  | An agent stays idle on Herdr | Herdr judges by that agent's **screen rules** | It shows `working` once the agent really runs; when `pi` has no provider logged in, idle is the truth |
 | Ledger and environment | After clearing the ledger, old sandboxes turn into `[E]` / `[U]` and snapshots lose their parent | The local ledger holds name ↔ id; the sandbox **also** writes `csb.label` into platform metadata at creation (the platform can see it), but `csb adopt` cannot write back, so adoptions on other machines stay local | **Never clear a ledger you still need**. If you must, go through `csb clean --ledger` (backs up first, asks twice, keeps high-water marks and templates); details in [Local ledger and sharing](#local-ledger-and-sharing) |
 |  | `csb logs` cannot fetch logs | Platform logs are not here | Use the official `cubemastercli` or the node logs (ask ops for the path) |
 
@@ -708,7 +705,7 @@ Four actions involving volumes and snapshots (volume data **never enters a snaps
 | `csb rb <id> <snapshot-id>` | Not restored | **The same live volume** | Same as above |
 
 - **Two writers sharing one volume will really corrupt files**: stop writing first, or copy out with `csb cp <id>:/data/dir ./`.
-- Inbound traffic reaches only services bound to `0.0.0.0`; listening on `127.0.0.1` gives 502; do not append `:port` when writing the address.
+- Inbound traffic reaches only services bound to `0.0.0.0`; listening on `127.0.0.1` gives 502; for `CUBE_PROXY_NODE_IP`, write only the node IP — no `:port`.
 
 ## Where settings live
 
@@ -728,7 +725,7 @@ Manage them with `csb config list / set / get / unset / where / path`; a bad val
 |  | `CSB_CONNECT_WAIT` | Connect / handshake ceiling (default 30, 5–300); an unreachable host waits this long instead of hanging forever |
 |  | `CSB_HTTP_WAIT` | Read-only HTTP ceiling (default 30, 10–120) |
 |  | `CSB_STOP_WAIT` | Per-command ceiling in seconds (default 120, clamped 10–3600); `snap` / `rb` / `kill` / `info` / `cp` / `vol` / `tree` |
-|  | `CSB_EXEC_WAIT` | Wait ceiling for `csb exec` (**default 600 seconds = 10 minutes**, clamped 10–3600). Past it returns `rc=3`; raise it to keep waiting (see "Timeouts") |
+|  | `CSB_EXEC_WAIT` | Wait ceiling for `csb exec` (**default 600 seconds = 10 minutes**, clamped 10–3600). Past it returns `rc=3`; raise it to keep waiting (`CSB_EXEC_WAIT=1200` or `csb config set cube_exec_wait 1200`) |
 |  | `CSB_SHELL_MAX` | When `csb shell` cumulative output exceeds this it prints one warning and does not interrupt (default 64 MiB; accepts `1M` / `1G`) |
 |  | `CSB_FETCH_WAIT` | Ceiling in seconds for one UI fetch (default 5, clamped 0.5–3600) |
 |  | `CSB_FETCH_GIVEUP` | Seconds after which a panel gives up on one fetch and starts new work (default 60) |
@@ -748,7 +745,7 @@ Manage them with `csb config list / set / get / unset / where / path`; a bad val
 |  | `CSB_AUTO_NO_ADOPT` | `1` disables the "auto-adopt on TUI open" behavior |
 |  | `CSB_AUTO_NO_SEEN` | `1` stops adding the "landmark" row (only affects sandboxes that are unregistered locally while the server still has snapshots for them) |
 |  | `CSB_AUTO_NO_SPIN` | Turns off the spinner line showing "waited Ns" |
-|  | `CSB_AUTO_PROXY` | Automatically inject the host proxy when starting a new sandbox: reads this process's `HTTP(S)_PROXY` and replaces `127.0.0.1` with the host LAN IP; set `0` to disable. A proxy given via `--env` is not overwritten. The injected address is also folded into that sandbox's `allow_out` |
+|  | `CSB_AUTO_PROXY` | Automatically inject the host proxy when starting a new sandbox: reads this process's `HTTP(S)_PROXY` and replaces `127.0.0.1` with the host LAN IP; set `0` to disable. A proxy given via `--env` is not overwritten. The injected address is folded into that sandbox's `allow_out` only when this start also writes a network policy (`--net` / `--allow-out` / `--proxy`); with no network flag at all, CSB inherits the template policy and does not touch `allow_out`. |
 |  | `CSB_INTERNAL_CIDR` | Comma-separated CIDRs that belong to the platform's sandbox network: kept out of the injected `NO_PROXY`, and folded into a sandbox's `allow_out` next to a host proxy (default empty, nothing is hard-coded) |
 |  | `CSB_AUTO_SBX_SWEEP` | Set `0` to disable event-driven sbx policy reclamation (the automatic cleanup after a successful `csb ls` / `csb start`); on by default |
 |  | `CSB_AUTO_SBX_SWEEP_COOLDOWN` | Seconds that must pass between two sightings before dead policies are reclaimed (default 600); set `0` only for testing |
@@ -763,19 +760,19 @@ Manage them with `csb config list / set / get / unset / where / path`; a bad val
 | External (CSB reads only) | `CUBE_API_URL` | Cluster API address (default `http://127.0.0.1:3000`) |
 |  | `CUBE_API_KEY` | API key |
 |  | `CUBE_PROXY_NODE_IP` | CubeProxy node IP; **required** without wildcard DNS |
+| Debug | `CSB_DEBUG` | Set `1` to print swallowed exceptions to stderr |
+|  | `CSB_DNS` | Environment-variable form of `--dns-server`; unset by default |
 |  | `SSL_CERT_FILE` | Path to a self-signed certificate |
 |  | `XDG_CONFIG_HOME` | Replaces the `~/.config` root: **moves the whole package** (ledger / preferences / logs / skins move with it); **absolute paths only** |
 |  | `NO_COLOR` | `1` disables all color (plain text, logs safe to archive) |
 |  | `TERM` / `COLORTERM` / `TERM_PROGRAM` | Decide whether the terminal supports color / truecolor; `TERM=dumb` counts as no color; `TERM_PROGRAM` picks the default frame characters |
-|  | `TMUX` / `STY` | A value means running inside tmux / screen; only then does the `i` shell offer "open another window"; on a plain terminal the menu has no such row and the footer suggests `start csb tui inside tmux or screen…` |
+|  | `TMUX` / `STY` | A value means running inside tmux / screen; only then does the `i` shell offer "open another window"; on a plain terminal the menu has no such row and the footer suggests entering tmux or screen first |
 |  | `HERDR_ENV` / `HERDR_WORKSPACE_ID` | Provided by Herdr when running inside it; the third `i` shell route depends on it |
 
-**Only `CUBE_API_URL` / `CUBE_API_KEY` are recognized** from the platform side; home-grown switches all start with CSB.
+**External variables are read-only — CSB never writes them**: `CUBE_API_URL` / `CUBE_API_KEY` (the rest are listed above); home-grown switches always use the CSB prefix.
 `csb config set <name> <value>` writes `switches.json`; `csb config where` explains which layer overrode what.
 `csb prune` clears only dead data "not in the complete cluster list": dead entries and dead sbx policies; `--entries` / `--policies` select just one kind, `--dry-run` only lists the plan, and the registry and config are backed up before writing.
 **Boolean switches accept only `1` / `0`**: writing `true` / `yes` / `on` prints a warning and falls back to the default; empty means the default.
-
-**Timeouts**: `csb exec` waits **600 seconds** by default, returning `rc=3` past that; for longer use `CSB_EXEC_WAIT=1200` or `csb config set cube_exec_wait 1200` (ceiling 3600). Other wait ceilings are in the "Waiting and timeouts" table above.
 
 ## Appendix: node types at a glance
 
@@ -786,7 +783,7 @@ Every marker on the tree is defined here, along with how it is created.
 | Templates |  `[T] name` | `tpl-root` | A template with an alias | A platform-provided template / `csb tpl alias` / `csb commit --alias` | — | Tree root |
 |  |  `[T] tpl-xxxxxxxx` | `tpl-raw` | An anonymous template (no alias) | `template commit` without a name; or `--clear` on a template's alias | — | Under `[U] no local name yet` |
 |  |  `[D] <alias>` | `tpl-root` + `deleted` | A template with an alias is gone from the server, leaving only the local row | First record a row with `csb commit --alias` | The template is then deleted **elsewhere** | Tree root |
-|  |  `[T] tpl-xxxxxxxx` | `tpl-raw` + `deleted` | A local leftover row of a template with **no** alias (the marker follows the type, hence `[T]`) | As above, but that row carried no alias | — | Inside `[U] no local name yet` |
+|  |  `[T] tpl-xxxxxxxx` | `tpl-raw` + `deleted` | A local leftover row of a template with **no** alias | As above, but that row carried no alias | — | Inside `[U] no local name yet` |
 | Sandboxes and signposts |  `[S] name (running / paused)` | `start` | A sandbox with a local name | `csb start pi --label zoo-01` | — | Under its template / family template |
 |  |  `[S] name` | `clone` | A cloned sandbox | `csb clone <id>` | — | Under its source; re-parents to the family when the source is gone |
 |  |  `[S] name` | `from-snap` | A sandbox started from a snapshot | `csb start zoo-01-s --label zoo-02` | — | **Under that snapshot** |
@@ -795,33 +792,20 @@ Every marker on the tree is defined here, along with how it is created.
 |  |  `[S] name` | `nolocal`, and no template to hang under | Named on the server but unregistered locally | Not created by csb | `U` undid the adoption and its template cannot be found either | Inside `[U] no local name yet` (the marker follows the type) |
 |  |  `[S] xxxxxxxx` | `unadopted` | No name **and** no template to hang under (the marker follows the type, hence `[S]`) | As above, plus its template has no alias | — | Inside `[U] no local name yet` |
 |  |  `[D] name (deleted)` | `dead` | Signpost: **the sandbox is deleted but snapshots remain** | `csb kill <id>` (snapshots kept) | — | Under the family template; tree root when that cannot be found |
-|  |  `[E] xxxxxxxx (external)` | `dead` + `external` | External signpost: a snapshot records a source id that is unknown on both sides | Not created by csb | A sandbox created on another machine (another ledger) plus its snapshots, after the sandbox is gone (no landmark filled in yet) | Tree root |
+|  |  `[E] xxxxxxxx (external)` | `dead` + `external` | External signpost: a snapshot records a source id that is unknown on both sides | Not created by csb | A sandbox created on another machine (another ledger) plus its snapshots, after the sandbox is gone | Tree root |
 |  |  `[X] name (stale)` | `stale` | Leftover: present in the local ledger, absent on the server, with no snapshot hanging off it | — | The sandbox was destroyed some other way while the local row remains | Under `[X] leftover record` |
 | Snapshots |  `[s] name` | `snap` | A normal snapshot | `csb snap <id> zoo-01-s` | — | Under its source sandbox |
 |  |  `[s] snap-xxxx` + `(in use by 1 sandbox)` | `snap` + `clonetemp` | The temporary snapshot a clone creates automatically; N = copies currently using it | `csb clone` (automatic) | — | See [Three kinds of snapshots](#three-kinds-of-snapshots-are-not-the-same-thing) |
-|  |  `[s] snap-xxxxxxxx (orphan)` | `snap` + `orphan` | A snapshot with no local record | Produced by the platform itself / a lost ledger (not reproducible against a real cluster) | — | Under `[s] unattached snapshots` |
+|  |  `[s] snap-xxxxxxxx (orphan)` | `snap` + `orphan` | A snapshot with no local record | Produced by the platform itself / a lost ledger | — | Under `[s] unattached snapshots` |
 | Group headers |  `[X] leftover record` | Group header | The group holding stale nodes | — | As above | Tree root, sorted last |
 |  |  `[U] no local name yet` | Group header | Holds anonymous templates plus sandboxes with nowhere to hang | — | — | Tree root |
-|  |  `[s] unattached snapshots` | Group header | Snapshots for which the platform does not even give a source id and that have no ledger to hang under | — | This platform version always provides `origin`, so a real cluster cannot produce them; the group may appear after a platform change | Tree root; only exists when non-empty |
-
-**Small markers** (any node type may carry them):
-
-| Marker | Meaning |
-| --- | --- |
-| `(running)` / `(paused)` / `(deleting)` | State reported by the platform |
-| `(deleted)` | This node is a `[D]` signpost |
-| `(external)` | This node is `[E]` |
-| `(stale)` | This node is `[X]` |
-| `(orphan)` | A snapshot with no local record |
-| `(N)` | How many **direct** children hang below |
-| `*` / `>` | A `*` in column 2 = a mark; `>` at line start = the cursor |
-| `#xxxxxxxx` | Short-id disambiguation when one name appears twice (only in `csb tree` text output; the TUI does not add it) |
+|  |  `[s] unattached snapshots` | Group header | Snapshots for which the platform does not even give a source id and that have no ledger to hang under | — | Platform-version dependent: may appear depending on the platform version | Tree root; only exists when non-empty |
 
 ## License, credits and contributing
 
 - License: MIT, full text in `LICENSE`.
 - Credits: the official CubeSandbox SDK and `cubemastercli`.
-- Contributing: open issues and changes at <https://github.com/Buxton1984/csbtui/issues>.
+- Contributing: open issues and changes at <https://github.com/Buxton1984/CubeSandbox-TUI/issues>.
 
 <p align="center">
   <sub>(๑˃ᴗ˂)و&nbsp; Keep your agents sandboxed.</sub>

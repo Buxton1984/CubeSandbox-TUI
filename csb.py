@@ -220,9 +220,9 @@ def label_batch(entries,hw,fam,n,srvn=0):
 import json, os, datetime, time, unicodedata, threading
 from collections import Counter
 def reg_new():
-    return{'version':1,'created':_now(),'family_highwater':{},'templates':{},'entries':{}}
+    return{'version':1,'schema':1,'created':_now(),'family_highwater':{},'templates':{},'entries':{}}
 _BAKW=set()
-BAK_KEEP=3
+BAK_KEEP=10
 def _baks(p):
     import glob
     return sorted(glob.glob(p+'.bak-*'))
@@ -289,11 +289,19 @@ def _hw_path(p):
     return os.path.join(os.path.dirname(os.path.abspath(p)),'highwater.json')
 def _hw_read(p):
     m={}
+    hp=_hw_path(p)
     try:
-        with open(_hw_path(p),encoding='utf-8')as f:d=json.load(f)
-    except Exception:
+        with open(hp,encoding='utf-8')as f:d=json.load(f)
+    except FileNotFoundError:
         return m
-    if not isinstance(d,dict):return m
+    except Exception as e:
+        _bak(hp,_whyjson(e));return m
+    if not isinstance(d,dict):
+        _bak(hp,'highwater is %s, not a json object'%type(d).__name__);return m
+    bad=[k for k,v in d.items() if not(isinstance(v,int)and not isinstance(v,bool))]
+    if bad:
+        _bak(hp,'highwater has %d non-integer value(s)'%len(bad))
+        err('warning: %s has %d non-integer highwater value(s) - kept the integers and backed the file up'%(hp,len(bad)))
     for k,v in d.items():
         if isinstance(v,int)and not isinstance(v,bool):m[k]=max(m.get(k,0),v)
     return m
@@ -313,6 +321,11 @@ def _hw_write(p,d):
 def _hw_set(p,d):
     if not d:return
     m=_hw_read(p)
+    lower={k:v for k,v in d.items() if isinstance(v,int)and m.get(k,0)>v}
+    if lower:
+        hp=_hw_path(p)
+        if os.path.exists(hp):
+            _bak(hp,'highwater is being lowered (%s) by label-reset'%', '.join(sorted(lower)))
     for k,v in d.items():m[k]=max(0,int(v or 0))
     _hw_save(p,m)
 def reg_read(p):
@@ -322,20 +335,33 @@ def reg_read(p):
     if up:_hw_write(p,up);hw.update(up)
     r['family_highwater']=dict(hw)
     return r
+def _reg_schema(r):
+    return r.get('schema',r.get('version'))if isinstance(r,dict)else None
 def _reg_read_raw(p):
     try:
         with open(p,encoding='utf-8') as f:r=json.load(f)
     except FileNotFoundError:return reg_new()
     except Exception as e:
         _bak(p,_whyjson(e));return reg_new()
-    if not isinstance(r,dict)or r.get('version')!=1:
-        _v=r.get('version')if isinstance(r,dict)else None
-        if isinstance(_v,int)and not isinstance(_v,bool)and _v>1:
-            _bak(p,'a newer csb wrote this registry (version %s)'%_v)
-            _ROMODE[0]='the ledger was written by a newer csb (version %s) - csb reads it but will not write over it'%_v
-            r=_shape(p,r,('family_highwater','templates','entries'),'a csb v1 registry')
-            return r if r is not None else reg_new()
-        _bak(p,'not a csb v1 registry');return reg_new()
+    sv=_reg_schema(r)
+    if isinstance(sv,int)and not isinstance(sv,bool)and sv>1:
+        _bak(p,'a newer csb wrote this registry (schema %s)'%sv)
+        _ROMODE[0]='the ledger was written by a newer csb (schema %s) - csb reads it but will not write over it'%sv
+        r=_shape(p,r,('family_highwater','templates','entries'),'a csb v1 registry')
+        return r if r is not None else reg_new()
+    if not(isinstance(sv,int)and not isinstance(sv,bool)and sv==1):
+        if isinstance(sv,str)and re.fullmatch(r'\d+\.\d+\.\d+',sv.strip()):
+            err('warning: %s: version %r looks like the csb package version; the ledger schema is 1 - reading it as schema 1 and rewriting it on the next write'%(p,sv.strip()))
+            r['version']=1;r.pop('schema',None)
+        elif sv is None and any(k in r for k in ('entries','templates','family_highwater')):
+            err('warning: %s has no version/schema field (old format); treating it as schema 1 and normalising it on the next write'%p)
+            r['version']=1
+        else:
+            _bak(p,'not a csb v1 registry');return reg_new()
+    if 'entries' not in r and any(r.get(k) for k in ('templates','family_highwater')):
+        _bak(p,'the entries table is missing while templates/highwater still have data')
+        _ROMODE[0]='the ledger has no entries table - csb refuses to write over it (restore the file, or clear it with csb clean --ledger)'
+        err('warning: %s has no entries table but templates/highwater still have data - refusing to write; restore the file or run csb clean --ledger'%p)
     r=_shape(p,r,('family_highwater','templates','entries'),'a csb v1 registry')
     if r is None:return reg_new()
     r.setdefault('created',_now())
@@ -425,10 +451,15 @@ def _sw_dir():
 def _sw_path():return os.path.join(_sw_dir(),'switches.json')
 _SWF=[None]
 def _sw_read_file():
+    p=_sw_path()
     try:
-        with open(_sw_path(),encoding='utf-8') as f:d=json.load(f)
-    except Exception:d=None
-    return d if isinstance(d,dict)else{}
+        with open(p,encoding='utf-8') as f:d=json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        _bak(p,_whyjson(e));return {}
+    if isinstance(d,dict):return d
+    _bak(p,'switches are %s, not a json object'%type(d).__name__);return {}
 def _sw_data():
     if _SWF[0] is None:_SWF[0]=_sw_read_file()
     return _SWF[0]
@@ -571,13 +602,15 @@ def _sw_reset_cache():_SWF[0]=None
 _sw_inject()
 def _reg_newer(p):
     try:
-        with open(p,encoding='utf-8') as f:v=json.load(f).get('version')
+        with open(p,encoding='utf-8') as f:d=json.load(f)
     except Exception:return None
+    v=d.get('schema',d.get('version'))
     return v if isinstance(v,int)and not isinstance(v,bool)and v>1 else None
 def reg_write(p,r):
+    if _ROMODE[0]:die(2,_ROMODE[0])
     _nv=_reg_newer(p)
     if _nv:
-        die(2,_ROMODE[0] or 'the ledger was written by a newer csb (version %s) - csb reads it but will not write over it'%_nv)
+        die(2,_ROMODE[0] or 'the ledger was written by a newer csb (schema %s) - csb reads it but will not write over it'%_nv)
     d=os.path.dirname(os.path.abspath(p));os.makedirs(d,exist_ok=True)
     _hw_write(p,r.get('family_highwater')or{})
     _atomic_write(p,{k:v for k,v in r.items()if k!='family_highwater'})
@@ -656,9 +689,6 @@ def _merge_cur(mine,disk,dels,sec=None):
 def resolve(arg,objs):
     ex=[o for o in objs if o['id']==arg]
     if ex:return ex
-    if len(arg)>=24:
-        pr=[o for o in objs if o['id'].startswith(arg)]
-        if pr:return pr
     nm=[o for o in objs if o['label']==arg]
     if nm:
         die(2,'%s is a name, not an id - sandbox targets take the full id now:  %s'%(arg,'  '.join(sorted(str(o['id'])for o in nm))))
@@ -1302,8 +1332,7 @@ def wait_poll(fetch,want,maxpolls,interval):
 def colorize(tty,nocolor,term):
     return bool(tty and not nocolor and term and term!='dumb')
 import os,subprocess,sys,json as _json,shlex;sys.modules.setdefault('csb',sys.modules['__main__'])if __name__=='__main__'else None
-try:__version__=__import__('importlib.metadata',fromlist=['version']).version('csbtui')
-except Exception:__version__='0.1.0'
+__version__='0.1.1'
 def _env(*ks):return next((os.environ[k] for k in ks if k in os.environ),None)
 def cfg() -> dict:
     api=_env('CUBE_API_URL')or'http://127.0.0.1:3000'
@@ -1484,11 +1513,15 @@ _PREFSREADME=[
 def prefs_path(c=None):
     return (c or cfg()).get('pref')or os.path.join(os.path.dirname(os.path.abspath((c or cfg())['reg'])),'config.json')
 def prefs_read(c=None):
+    p=prefs_path(c)
     try:
-        with open(prefs_path(c),encoding='utf-8') as f:d=json.load(f)
-    except Exception:
+        with open(p,encoding='utf-8') as f:d=json.load(f)
+    except FileNotFoundError:
         return {}
-    return d if isinstance(d,dict) else {}
+    except Exception as e:
+        _bak(p,_whyjson(e));return {}
+    if isinstance(d,dict):return d
+    _bak(p,'prefs are %s, not a json object'%type(d).__name__);return {}
 def prefs(c=None):
     d=prefs_read(c);r=reg(c)
     for k in _PREFK:
@@ -2306,7 +2339,8 @@ def cmd_kill(o,c):
         sid=_label2entry(label,reg(c)['entries'])
         if not sid:
             if is_json(o):out_json({'sandbox_id':None,'label':label,'state':'nomatch','ghost':False,'snapshots':0,'note':'no match on the server or in the ledger'});return 2
-            die(2,'unknown sandbox: %s (see csb ls; full ids: csb ls -o json)%s'%(label,_idhint(c,label)))
+            _h=_idhint(c,label)
+            die(2,'unknown sandbox: %s (see csb ls; full ids: csb ls -o json)%s'%(label,('\n'+_h)if _h else''))
         gone=True
     dsnap=[s0 for s0,e0 in led(c).items()if e0.get('origin')==sid]
     if sb and is_tty() and not is_json(o) and not o.get('yes') and not o.get('dry-run'):
@@ -3176,7 +3210,7 @@ def tpl_lineage_snaps(c,tid):
 def cmd_tpl_rm(o,c):
     arg=need_arg(o,'tpl rm: <alias|template-id>')
     ts=tpl_rows(c)
-    t=next((x for x in ts if x['alias']==arg or x['id']==arg or(x['id'].startswith(arg)and len(arg)>=24)),None)
+    t=next((x for x in ts if x['alias']==arg or x['id']==arg),None)
     if not t:die(2,'unknown template: %s (see tpl ls)'%arg)
     tid=t['id']
     if tid.startswith('snap-'):die(2,'tpl rm refuses snapshot templates: %s (delete snapshots with snaprm %s)'%(t['alias']or tid,tid))
@@ -4580,10 +4614,11 @@ def _pick(items,o,what):
     return items[int(r)-1]
 def _idhint(c,arg):
     a=str(arg or'').strip();E=(reg(c)or{}).get('entries')or{}
-    if not re.fullmatch('[0-9a-f]{4,23}',a):return''
+    if not re.fullmatch('[0-9a-f]{4,31}',a):return''
     h=[i for i in E if str(i).startswith(a)]
     if len(h)!=1:return''
-    return'%s is a display form - in full:  %s\n  commands take the full id (the full id: csb ls -o json prints it)'%(a,h[0])
+    w='is a display form'if len(a)<24 else'is a prefix, not a full id'
+    return'%s %s - in full:  %s\n  commands take the full id (the full id: csb ls -o json prints it)'%(a,w,h[0])
 def _infonope(x,c):
     if str(x).startswith('snap-'):
         return'unknown sandbox: %s (that is a snapshot - csb snaps lists them; csb ls lists sandboxes)'%x
@@ -4593,7 +4628,8 @@ def _infonope(x,c):
     except Exception:pass
     return _sbnope(x,c)
 def _sbnope(x,c=None):
-    return 'no sandbox: %s\nfix   csb ls lists them; full ids: csb ls -o json%s'%(x,_idhint(c,x)if c is not None else'')
+    h=_idhint(c,x)if c is not None else''
+    return 'no sandbox: %s\nfix   csb ls lists them; full ids: csb ls -o json%s'%(x,('\n'+h)if h else'')
 def _rb_hint(x,c):
     try:
         org=fetch_snap_origins(c);nm={}
@@ -4924,7 +4960,7 @@ def _wipe_ledger(o,c):
     p=c['reg'];r=reg(c);hard=bool(o.get('hard'))
     ledp=c.get('led')or cfg()['led']
     hw=[q for q in _hw_targets(p)if os.path.exists(q)]
-    if not r['entries']and not hard:
+    if not r['entries']and not hard and not _ROMODE[0]:
         try:open(p+'.empty','w',encoding='utf-8').write('emptied by csb clean --ledger\n')
         except Exception:pass
         err('the local ledger is already empty - kept as a deliberate clear')
@@ -4941,6 +4977,7 @@ def _wipe_ledger(o,c):
     bak=_bak(p)
     if os.path.exists(ledp):_bak(ledp)
     for q in hw:_bak(q)
+    _ROMODE[0]=None
     r['entries']={};r['noauto']=[]
     if hard:
         r['templates']={};r['family_highwater']={}
@@ -4968,7 +5005,7 @@ def cmd_clean(o,c):
     sbs,orig=_val(o,'reading the cluster',lambda:(fetch_sbs(c),fetch_snap_origins(c,prune=False)))
     E=reg(c)['entries']
     def _pfx(xs):
-        c0=[x for x in xs if x==arg or(len(arg)>=24 and str(x).startswith(arg))]
+        c0=[x for x in xs if x==arg]
         return c0[0]if len(c0)==1 else None
     live=[s for s in sbs if s['id']==arg or s.get('label')==arg]
     if not live:
@@ -5016,10 +5053,9 @@ def cmd_clean(o,c):
         if is_json(o):out_json({'cleaned':gid,'label':arg,'kind':'ghost','snapshots':0})
         else:print('%s ghost node removed'%(e.get('label')or gid[:8]))
         return 0
-    ext=[i for i in set(list(orig.values())+[(e2 or{}).get('origin')for e2 in led(c).values()])
-         if i and i!=arg and not(i in E)and not any(x['id']==i for x in sbs)and i.startswith(arg)]
-    if ext or (not any(x['id']==arg for x in sbs) and arg not in E and any(v==arg for v in orig.values())):
-        gid2=(ext or[arg])[0];mines=_sids_for(c,gid2,orig)
+    _ext=set(list(orig.values())+[(e2 or{}).get('origin')for e2 in led(c).values()])
+    if not any(x['id']==arg for x in sbs) and arg not in E and arg in _ext:
+        gid2=arg;mines=_sids_for(c,gid2,orig)
         m=['clean refused: %s is an [E] node - csb never named it.'%gid2[:8]]
         if mines:
             m+=['  delete its %d snapshot(s) first:'%len(mines)]+['    '+x for x in _snap_argv(mines)]
